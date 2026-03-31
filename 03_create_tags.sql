@@ -1,255 +1,264 @@
 -- ============================================================================
--- HLS Payer Governance Demo — Tag Taxonomy & Tag Assignments
--- Creates sensitivity classification tags and applies them to all columns
+-- HLS Payer Governance Demo — Optimized Tag Taxonomy & Assignments
+-- Catalog: serverless_stable_swv01_catalog
+-- Schema: governance
+--
+-- DESIGN PRINCIPLES (per Databricks internal best practices):
+--   1. Only tag columns that require a governance action (masking, ABAC, audit)
+--   2. Leverage hierarchy — schema-level tags for cross-cutting concerns
+--   3. Lowercase snake_case values — case-sensitive matching in ABAC
+--   4. Boolean pattern for PHI/PII — cleaner ABAC predicates
+--   5. Absence of a tag = no special handling required
+--
+-- TAG TAXONOMY:
+--   Schema level:  compliance (hipaa)
+--   Table level:   business_domain, retention
+--   Column level:  sensitivity_level, hipaa_type, masking_rule,
+--                  contains_phi, contains_pii
+--
+-- GOVERNED TAG CREATION:
+--   Governed tags are created via REST API or Terraform, NOT SQL.
+--   API: POST /api/2.1/unity-catalog/tag-policies
+--   Terraform: databricks_tag_policy resource
+--   See appendix at end of file for examples.
 -- ============================================================================
 
--- ============================================================
--- STEP 1: Create Tag Keys (taxonomy)
--- ============================================================
-
--- Sensitivity level tag — master classification
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.sensitivity_level
-COMMENT 'Master data sensitivity classification tier. Values: PHI, PII, Sensitive, Internal, Public. Drives masking policy selection.';
-
--- HIPAA identifier type — for PHI columns
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.hipaa_identifier
-COMMENT 'Specific HIPAA Safe Harbor identifier type per 45 CFR 164.514(b)(2). Values map to the 18 Safe Harbor identifiers.';
-
--- Data domain tag — business domain
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.data_domain
-COMMENT 'Business data domain classification. Values: Member, Claims, Provider, Eligibility, Pharmacy, Utilization_Management, Financial, Clinical, Administrative.';
-
--- Compliance framework tag
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.compliance_framework
-COMMENT 'Applicable regulatory compliance framework. Values: HIPAA, HITECH, PCI_DSS, SOX, State_Privacy.';
-
--- Data quality tier
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.quality_tier
-COMMENT 'Data quality tier for governance reporting. Values: Gold (curated), Silver (cleansed), Bronze (raw).';
-
--- Masking policy recommendation
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.masking_policy
-COMMENT 'Recommended masking treatment. Values: FULL_MASK, PARTIAL_MASK, HASH, REDACT, NONE.';
-
--- Retention policy
-CREATE TAG IF NOT EXISTS serverless_stable_swv01_catalog.governance.retention_policy
-COMMENT 'Data retention policy category. Values: 7_YEAR (HIPAA), 10_YEAR (claims), INDEFINITE, 3_YEAR.';
 
 -- ============================================================
--- STEP 2: Apply Tags — MEMBERS table
+-- STEP 1: Schema-Level Tags (inherited for ABAC evaluation)
 -- ============================================================
+-- All tables in this schema are HIPAA-governed. Setting at schema level
+-- eliminates redundant per-table tags and ensures new tables inherit.
 
--- Table-level tags
+ALTER SCHEMA serverless_stable_swv01_catalog.governance
+  SET TAGS ('compliance' = 'hipaa');
+
+
+-- ============================================================
+-- STEP 2: Table-Level Tags (business_domain + retention)
+-- ============================================================
+-- business_domain: identifies owning LOB for data stewardship
+-- retention: differs per domain (7yr HIPAA default, 10yr for claims/pharmacy per CMS)
+
 ALTER TABLE serverless_stable_swv01_catalog.governance.members
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Member',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '7_YEAR');
+  SET TAGS ('business_domain' = 'member', 'retention' = '7_year');
 
--- PHI / PII columns
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN member_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN subscriber_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN first_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'NAME', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN last_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'NAME', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN middle_initial SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'NAME', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN date_of_birth SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN ssn SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'SSN', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN drivers_license SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'VEHICLE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN address_line1 SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'GEOGRAPHIC', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN address_line2 SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'GEOGRAPHIC', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN city SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'GEOGRAPHIC', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN zip_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'GEOGRAPHIC', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN county SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'GEOGRAPHIC', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN phone_home SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'TELEPHONE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN phone_mobile SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'TELEPHONE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN email SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'EMAIL', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN medicare_beneficiary_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'HEALTH_PLAN_BENEFICIARY', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN medicaid_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'HEALTH_PLAN_BENEFICIARY', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-
--- Non-sensitive member columns
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN gender SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN state_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN preferred_language SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN race SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN ethnicity SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN marital_status SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN pcp_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN group_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN plan_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN effective_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN termination_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN is_active SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN source_system SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-
--- ============================================================
--- STEP 3: Apply Tags — CLAIMS table
--- ============================================================
 ALTER TABLE serverless_stable_swv01_catalog.governance.claims
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Claims',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '10_YEAR');
+  SET TAGS ('business_domain' = 'claims', 'retention' = '10_year');
 
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN claim_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN member_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN subscriber_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN claim_type SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN claim_status SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN service_date_from SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN service_date_to SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN admission_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN discharge_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_primary SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_2 SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_3 SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN procedure_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN procedure_modifier SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN revenue_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN place_of_service SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN rendering_provider_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN billing_provider_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN referring_provider_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN facility_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN billed_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN allowed_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN paid_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN member_liability SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN copay_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN coinsurance_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN deductible_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN drg_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN authorization_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN received_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN adjudicated_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN paid_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-
--- ============================================================
--- STEP 4: Apply Tags — PROVIDERS table
--- ============================================================
 ALTER TABLE serverless_stable_swv01_catalog.governance.providers
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Provider',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '7_YEAR');
+  SET TAGS ('business_domain' = 'provider', 'retention' = '7_year');
 
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN provider_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN tax_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PII', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN first_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN last_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN organization_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN specialty_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN specialty_desc SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN provider_type SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN network_status SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN credential SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN dea_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN license_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN license_state SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN address_line1 SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN city SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN state_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN zip_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN phone SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN fax SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN accepting_patients SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN effective_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN termination_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-
--- ============================================================
--- STEP 5: Apply Tags — ELIGIBILITY table
--- ============================================================
 ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Eligibility',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '7_YEAR');
+  SET TAGS ('business_domain' = 'eligibility', 'retention' = '7_year');
 
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN eligibility_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN member_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN subscriber_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN plan_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN plan_description SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN line_of_business SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN coverage_type SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN benefit_package SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN effective_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN termination_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN termination_reason SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN group_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN group_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN cobra_flag SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN exchange_flag SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN premium_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN subsidy_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-
--- ============================================================
--- STEP 6: Apply Tags — PHARMACY_CLAIMS table
--- ============================================================
 ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Pharmacy',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '10_YEAR');
+  SET TAGS ('business_domain' = 'pharmacy', 'retention' = '10_year');
 
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN rx_claim_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN member_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN fill_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN ndc_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN drug_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN drug_class SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN quantity_dispensed SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN days_supply SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN refill_number SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN prescriber_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN pharmacy_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN pharmacy_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN formulary_tier SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN daw_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN ingredient_cost SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN dispensing_fee SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN paid_amount SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN member_copay SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN prior_auth_required SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN specialty_drug_flag SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-
--- ============================================================
--- STEP 7: Apply Tags — PRIOR_AUTHORIZATIONS table
--- ============================================================
 ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations
-  SET TAGS ('serverless_stable_swv01_catalog.governance.data_domain' = 'Utilization_Management',
-            'serverless_stable_swv01_catalog.governance.compliance_framework' = 'HIPAA',
-            'serverless_stable_swv01_catalog.governance.quality_tier' = 'Gold',
-            'serverless_stable_swv01_catalog.governance.retention_policy' = '7_YEAR');
+  SET TAGS ('business_domain' = 'utilization_management', 'retention' = '7_year');
 
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN auth_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN member_id SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'UNIQUE_IDENTIFIER', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'HASH');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN auth_type SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN auth_status SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN request_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'DATE', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'PARTIAL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN decision_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN effective_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN expiration_date SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN diagnosis_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN procedure_code SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN requesting_provider_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN servicing_provider_npi SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN facility_name SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Public', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN units_requested SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN units_approved SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN denial_reason SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Sensitive', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'REDACT');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN clinical_notes SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'PHI', 'serverless_stable_swv01_catalog.governance.hipaa_identifier' = 'MEDICAL_RECORD', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'FULL_MASK');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN peer_reviewer SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN urgency SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN created_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
-ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN updated_at SET TAGS ('serverless_stable_swv01_catalog.governance.sensitivity_level' = 'Internal', 'serverless_stable_swv01_catalog.governance.masking_policy' = 'NONE');
+
+-- ============================================================
+-- STEP 3: Column-Level Tags — MEMBERS
+-- Only columns requiring masking or ABAC. Non-sensitive columns
+-- (gender, plan_code, created_at, etc.) are intentionally untagged.
+-- ============================================================
+
+-- PHI identifiers — hashed for de-identified analytics
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN member_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN subscriber_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+
+-- PII names — full mask for non-privileged users
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN first_name SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'name', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN last_name SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'name', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN middle_initial SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'name', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+
+-- SSN and government ID — highest sensitivity
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN ssn SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'ssn', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN drivers_license SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'government_id', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+
+-- Date of birth — partial mask (year-month for partial, year for de-identified)
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN date_of_birth SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+
+-- Geographic PHI — addresses, city, county, ZIP
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN address_line1 SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'geographic', 'masking_rule' = 'full_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN address_line2 SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'geographic', 'masking_rule' = 'full_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN city SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'geographic', 'masking_rule' = 'redact', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN county SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'geographic', 'masking_rule' = 'redact', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN zip_code SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'geographic', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+
+-- Contact PHI — phone, email
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN phone_home SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'telephone', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN phone_mobile SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'telephone', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN email SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'email_address', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+
+-- Health plan beneficiary IDs
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN medicare_beneficiary_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'health_plan_beneficiary', 'masking_rule' = 'full_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN medicaid_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'health_plan_beneficiary', 'masking_rule' = 'full_mask', 'contains_phi' = 'true');
+
+-- Sensitive demographics — not HIPAA identifiers, but require redaction for equity analytics
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN race SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.members ALTER COLUMN ethnicity SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+
+-- ============================================================
+-- STEP 4: Column-Level Tags — CLAIMS
+-- ============================================================
+
+-- PHI identifiers
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN member_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN subscriber_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+
+-- PHI service dates
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN service_date_from SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN service_date_to SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN admission_date SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN discharge_date SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+
+-- Clinically sensitive — diagnosis and procedure codes
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_primary SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_2 SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN diagnosis_code_3 SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN procedure_code SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN drg_code SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+-- Financially sensitive — claim amounts
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN billed_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN allowed_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN paid_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN member_liability SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN copay_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN coinsurance_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.claims ALTER COLUMN deductible_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+
+-- ============================================================
+-- STEP 5: Column-Level Tags — PROVIDERS (only 2 sensitive columns)
+-- ============================================================
+
+ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN tax_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'tax_id', 'masking_rule' = 'full_mask', 'contains_pii' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.providers ALTER COLUMN dea_number SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'full_mask');
+
+
+-- ============================================================
+-- STEP 6: Column-Level Tags — ELIGIBILITY (only 4 sensitive columns)
+-- ============================================================
+
+ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN member_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN subscriber_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN premium_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility ALTER COLUMN subsidy_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+
+-- ============================================================
+-- STEP 7: Column-Level Tags — PHARMACY CLAIMS
+-- ============================================================
+
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN member_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN fill_date SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+
+-- Clinically sensitive drug data
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN ndc_code SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN drug_name SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN drug_class SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+-- Financially sensitive Rx costs
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN ingredient_cost SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN dispensing_fee SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN paid_amount SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.pharmacy_claims ALTER COLUMN member_copay SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+
+-- ============================================================
+-- STEP 8: Column-Level Tags — PRIOR AUTHORIZATIONS
+-- ============================================================
+
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN member_id SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'unique_identifier', 'masking_rule' = 'hash', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN request_date SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'date_element', 'masking_rule' = 'partial_mask', 'contains_phi' = 'true');
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN clinical_notes SET TAGS ('sensitivity_level' = 'critical', 'hipaa_type' = 'medical_record', 'masking_rule' = 'full_mask', 'contains_phi' = 'true');
+
+-- Clinically sensitive
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN diagnosis_code SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN procedure_code SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTER COLUMN denial_reason SET TAGS ('sensitivity_level' = 'high', 'masking_rule' = 'redact');
+
+
+-- ============================================================
+-- APPENDIX A: Governed Tag Creation (REST API / Terraform)
+-- ============================================================
+-- Governed tags are NOT created via SQL. Use the REST API or Terraform:
+--
+-- REST API:
+--   POST /api/2.1/unity-catalog/tag-policies
+--   {
+--     "name": "sensitivity_level",
+--     "allowed_values": ["critical", "high", "medium", "low"],
+--     "comment": "Data sensitivity tier driving masking policy selection"
+--   }
+--
+-- Terraform:
+--   resource "databricks_tag_policy" "sensitivity_level" {
+--     name           = "sensitivity_level"
+--     allowed_values = ["critical", "high", "medium", "low"]
+--     comment        = "Data sensitivity tier driving masking policy selection"
+--   }
+--
+-- Recommended governed tags for this demo:
+--   sensitivity_level: [critical, high, medium, low]
+--   compliance:        [hipaa, hitech, pci_dss, sox, state_privacy]
+--   retention:         [7_year, 10_year, 3_year, indefinite]
+--   business_domain:   [member, claims, provider, eligibility, pharmacy, utilization_management]
+--   masking_rule:      [full_mask, partial_mask, hash, redact, none]
+
+
+-- ============================================================
+-- APPENDIX B: Tag Audit Queries
+-- ============================================================
+
+-- B1: Tag count per table (limit: 50 tags per object)
+-- SELECT table_name, count(DISTINCT tag_name) as tag_count
+-- FROM serverless_stable_swv01_catalog.information_schema.table_tags
+-- WHERE schema_name = 'governance'
+-- GROUP BY table_name
+-- HAVING count(DISTINCT tag_name) > 40
+-- ORDER BY tag_count DESC;
+
+-- B2: Column tags per table (limit: 1,000 across all columns)
+-- SELECT table_name, count(*) as total_column_tags
+-- FROM serverless_stable_swv01_catalog.information_schema.column_tags
+-- WHERE schema_name = 'governance'
+-- GROUP BY table_name
+-- HAVING count(*) > 800
+-- ORDER BY total_column_tags DESC;
+
+-- B3: Tag value cardinality (>100 distinct values = review for deprecation)
+-- SELECT tag_name, count(DISTINCT tag_value) as distinct_values
+-- FROM serverless_stable_swv01_catalog.information_schema.column_tags
+-- WHERE schema_name = 'governance'
+-- GROUP BY tag_name
+-- HAVING count(DISTINCT tag_value) > 50
+-- ORDER BY distinct_values DESC;
+
+-- B4: Case/character violations (should be empty if snake_case enforced)
+-- SELECT DISTINCT tag_name
+-- FROM serverless_stable_swv01_catalog.information_schema.column_tags
+-- WHERE schema_name = 'governance'
+--   AND NOT (tag_name RLIKE '^[a-z0-9_]+$');
+
+-- B5: PHI inventory — all columns tagged as containing PHI
+-- SELECT table_name, column_name, tag_value as hipaa_identifier_type
+-- FROM serverless_stable_swv01_catalog.information_schema.column_tags
+-- WHERE schema_name = 'governance'
+--   AND tag_name = 'hipaa_type'
+-- ORDER BY table_name, column_name;
+
+-- B6: Columns requiring masking (non-none masking_rule)
+-- SELECT table_name, column_name,
+--   MAX(CASE WHEN tag_name = 'masking_rule' THEN tag_value END) as masking_rule,
+--   MAX(CASE WHEN tag_name = 'sensitivity_level' THEN tag_value END) as sensitivity
+-- FROM serverless_stable_swv01_catalog.information_schema.column_tags
+-- WHERE schema_name = 'governance'
+--   AND tag_name IN ('masking_rule', 'sensitivity_level')
+-- GROUP BY table_name, column_name
+-- ORDER BY sensitivity DESC, table_name;
