@@ -262,3 +262,22 @@ ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations ALTE
 --   AND tag_name IN ('masking_rule', 'sensitivity_level')
 -- GROUP BY table_name, column_name
 -- ORDER BY sensitivity DESC, table_name;
+
+
+-- ============================================================
+-- STEP 7: Row Filter Key Columns
+-- These columns are passed as arguments to ABAC row filter functions.
+-- They need tags so MATCH COLUMNS can locate them across tables.
+-- ============================================================
+
+-- auth_type: identifies authorization category (Behavioral Health, SUD, etc.)
+-- Required by the bh_sud_auth_protection row filter policy (42 CFR Part 2)
+ALTER TABLE serverless_stable_swv01_catalog.governance.prior_authorizations
+  ALTER COLUMN auth_type
+  SET TAGS ('hipaa_type' = 'auth_type');
+
+-- line_of_business: identifies plan LOB (Commercial, Medicare Advantage, Medicaid, etc.)
+-- Required by the eligibility_lob_filter row filter policy
+ALTER TABLE serverless_stable_swv01_catalog.governance.eligibility
+  ALTER COLUMN line_of_business
+  SET TAGS ('business_domain' = 'lob');
