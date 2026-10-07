@@ -1,7 +1,12 @@
 -- ============================================================================
--- HLS Payer ABAC Demo — ABAC Policies (Correct GA Syntax)
+-- HLS Payer ABAC Demo — ABAC Policies
 -- Catalog: serverless_stable_swv01_catalog | Schema: governance
 -- Compute: Serverless or DBR 16.4+ (REQUIRED)
+--
+-- SYNTAX CAVEAT (last verified 2026-05): ABAC policy syntax evolved during
+-- 2026. Re-confirm CREATE POLICY / MATCH COLUMNS / ON COLUMN against the
+-- current docs (docs.databricks.com/.../abac/policies) before presenting this
+-- as GA. Retarget: replace serverless_stable_swv01_catalog with your catalog.
 --
 -- CORRECT SYNTAX (per docs.databricks.com/…/abac/policies):
 --
