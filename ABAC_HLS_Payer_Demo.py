@@ -46,6 +46,7 @@
 displayHTML("""
 <div style="text-align:center; padding:20px; background:#f8f9fa; border-radius:8px;">
   <img src="/files/Volumes/serverless_stable_swv01_catalog/governance/demo_assets/slide2.png"
+       onerror="this.outerHTML='&lt;p style=&quot;font-family:sans-serif;color:#777&quot;&gt;[architecture slide unavailable — open governance/demo_assets/slide2.png]&lt;/p&gt;'"
        style="max-width:100%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15);" />
 </div>
 """)
@@ -77,6 +78,7 @@ displayHTML("""
 displayHTML("""
 <div style="text-align:center; padding:20px; background:#f0f4ff; border-radius:8px;">
   <img src="/files/Volumes/serverless_stable_swv01_catalog/governance/demo_assets/slide3.png"
+       onerror="this.outerHTML='&lt;p style=&quot;font-family:sans-serif;color:#777&quot;&gt;[architecture slide unavailable — open governance/demo_assets/slide3.png]&lt;/p&gt;'"
        style="max-width:100%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15);" />
 </div>
 """)
@@ -332,74 +334,74 @@ displayHTML("""
 # MAGIC %sql
 # MAGIC -- Claims: Clinical sensitivity + financial sensitivity in one query
 # MAGIC -- Land the point: diagnosis specificity matters (E11.65 vs E11.x)
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'Clinical Reviewer (full)' AS role,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'phi_full_access')    AS member_id,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_dx(diagnosis_code_primary,  'phi_full_access')  AS primary_dx,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_amount(paid_amount, 'phi_full_access') AS paid_amount
-# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1
+# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'Pop Health Analyst (partial)',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'phi_partial_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_dx(diagnosis_code_primary, 'phi_partial_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_amount(paid_amount, 'phi_partial_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1
+# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'External Researcher (none)',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_dx(diagnosis_code_primary, 'no_phi_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_amount(paid_amount, 'no_phi_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1;
+# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE claim_status = 'Paid' LIMIT 1);
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- Pharmacy: Drug-as-condition-inference vector
 # MAGIC -- "Pembrolizumab = cancer. Buprenorphine = OUD (42 CFR Part 2 protected)."
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'PBM Pharmacist (full)' AS role,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'phi_full_access')      AS member_id,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_name, 'phi_full_access')    AS drug_name,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_class, 'phi_full_access')   AS drug_class
-# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3
+# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3)
 # MAGIC UNION ALL
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'UM Analyst (partial)',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'phi_partial_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_name, 'phi_partial_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_class, 'phi_partial_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3
+# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3)
 # MAGIC UNION ALL
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'Actuary (none)',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_name, 'no_phi_access'),
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_mask_drug(drug_class, 'no_phi_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3;
+# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims LIMIT 3);
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC -- THE JOINABILITY TEST: Prove de-identified data is still analytically useful
 # MAGIC -- "The hash for M-100001 is identical across all 3 tables."
-# MAGIC SELECT
+# MAGIC (SELECT
 # MAGIC   'members'      AS source_table,
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access') AS hashed_member_id
-# MAGIC FROM serverless_stable_swv01_catalog.governance.members WHERE member_id = 'M-100001'
+# MAGIC FROM serverless_stable_swv01_catalog.governance.members WHERE member_id = 'M-100001')
 # MAGIC UNION ALL
-# MAGIC SELECT 'claims',
+# MAGIC (SELECT 'claims',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE member_id = 'M-100001' LIMIT 1
+# MAGIC FROM serverless_stable_swv01_catalog.governance.claims WHERE member_id = 'M-100001' LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT 'eligibility',
+# MAGIC (SELECT 'eligibility',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.eligibility WHERE member_id = 'M-100001' LIMIT 1
+# MAGIC FROM serverless_stable_swv01_catalog.governance.eligibility WHERE member_id = 'M-100001' LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT 'pharmacy_claims',
+# MAGIC (SELECT 'pharmacy_claims',
 # MAGIC   serverless_stable_swv01_catalog.governance.demo_hash_id(member_id, 'no_phi_access')
-# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims WHERE member_id = 'M-100001' LIMIT 1;
+# MAGIC FROM serverless_stable_swv01_catalog.governance.pharmacy_claims WHERE member_id = 'M-100001' LIMIT 1);
 # MAGIC -- All 4 rows show the same hash → JOIN still works across all tables
 
 # COMMAND ----------
@@ -444,6 +446,9 @@ displayHTML("""
 # MAGIC %sql
 # MAGIC -- Clean up classic masks before applying ABAC policies (avoid conflicts!)
 # MAGIC -- ABAC policy + direct mask on same column = CONFLICT ERROR
+# MAGIC -- NOTE: run this ONLY after the SET MASK cell above. DROP MASK has no
+# MAGIC -- IF EXISTS and errors if the column has no mask — on the 30-min track
+# MAGIC -- (which skips Act 5) do not run this cell.
 # MAGIC ALTER TABLE serverless_stable_swv01_catalog.governance.members
 # MAGIC   ALTER COLUMN ssn DROP MASK;
 # MAGIC ALTER TABLE serverless_stable_swv01_catalog.governance.members
@@ -491,12 +496,18 @@ displayHTML("""
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- CREATE THE ABAC POLICY — schema-scoped, tag-driven
-# MAGIC -- MATCH COLUMNS WHERE = the new GA ABAC syntax
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.hash_phi_identifiers
+# MAGIC -- CREATE THE ABAC POLICY — schema-scoped, tag-driven (GA syntax)
+# MAGIC -- Form: CREATE POLICY <name> ON SCHEMA <sch> COLUMN MASK <fn>
+# MAGIC --       TO <principal> [EXCEPT <principal>] FOR TABLES
+# MAGIC --       MATCH COLUMNS <tag_condition> AS col ON COLUMN col;
+# MAGIC CREATE OR REPLACE POLICY hash_phi_identifiers
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('masking_rule', 'hash')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.hash_identifier;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.hash_identifier
+# MAGIC   TO `account users`
+# MAGIC   EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('masking_rule', 'hash') AS col
+# MAGIC   ON COLUMN col;
 # MAGIC -- No table names listed. No column names listed.
 # MAGIC -- Any column in ANY table in this schema tagged masking_rule='hash' is now protected.
 
@@ -504,15 +515,16 @@ displayHTML("""
 
 # MAGIC %sql
 # MAGIC -- VERIFY: Policy is active across ALL 5 tables simultaneously
-# MAGIC SELECT m.member_id AS members_id FROM serverless_stable_swv01_catalog.governance.members m LIMIT 1
+# MAGIC -- (parenthesize each branch: Spark SQL rejects LIMIT on a bare UNION ALL operand)
+# MAGIC (SELECT m.member_id AS members_id FROM serverless_stable_swv01_catalog.governance.members m LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT c.member_id FROM serverless_stable_swv01_catalog.governance.claims c LIMIT 1
+# MAGIC (SELECT c.member_id FROM serverless_stable_swv01_catalog.governance.claims c LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT e.member_id FROM serverless_stable_swv01_catalog.governance.eligibility e LIMIT 1
+# MAGIC (SELECT e.member_id FROM serverless_stable_swv01_catalog.governance.eligibility e LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT p.member_id FROM serverless_stable_swv01_catalog.governance.pharmacy_claims p LIMIT 1
+# MAGIC (SELECT p.member_id FROM serverless_stable_swv01_catalog.governance.pharmacy_claims p LIMIT 1)
 # MAGIC UNION ALL
-# MAGIC SELECT pa.member_id FROM serverless_stable_swv01_catalog.governance.prior_authorizations pa LIMIT 1;
+# MAGIC (SELECT pa.member_id FROM serverless_stable_swv01_catalog.governance.prior_authorizations pa LIMIT 1);
 # MAGIC -- Non phi_full_access users see HID-xxxxxxxxxxxxxxxx in ALL 5 tables
 
 # COMMAND ----------
@@ -533,13 +545,18 @@ displayHTML("""
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_phi_dates
+# MAGIC CREATE OR REPLACE POLICY mask_phi_dates
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'date_element')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_date_of_birth;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_date_of_birth
+# MAGIC   TO `account users`
+# MAGIC   EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'date_element') AS col
+# MAGIC   ON COLUMN col;
+# MAGIC -- mask_date_of_birth RETURNS DATE (must match the DATE column type):
 # MAGIC -- phi_full_access:    exact date (HEDIS, care gap closure, eligibility verification)
-# MAGIC -- phi_partial_access: year-month (risk adjustment, age-band analytics)
-# MAGIC -- all others:         year-only (cohort analysis, actuarial modeling)
+# MAGIC -- phi_partial_access: first of month (risk adjustment, age-band analytics)
+# MAGIC -- all others:         first of year (cohort analysis, actuarial modeling)
 
 # COMMAND ----------
 
@@ -550,36 +567,48 @@ displayHTML("""
 
 # MAGIC %sql
 # MAGIC -- All remaining PHI column mask policies — one per HIPAA identifier type
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_ssn_columns
+# MAGIC CREATE OR REPLACE POLICY mask_ssn_columns
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'ssn')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_ssn;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_ssn
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'ssn') AS col ON COLUMN col;
 # MAGIC
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_name_columns
+# MAGIC CREATE OR REPLACE POLICY mask_name_columns
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'name')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_name;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_name
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'name') AS col ON COLUMN col;
 # MAGIC
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_phone_columns
+# MAGIC CREATE OR REPLACE POLICY mask_phone_columns
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'telephone')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_phone;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_phone
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'telephone') AS col ON COLUMN col;
 # MAGIC
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_email_columns
+# MAGIC CREATE OR REPLACE POLICY mask_email_columns
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'email_address')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_email;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_email
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'email_address') AS col ON COLUMN col;
 # MAGIC
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_beneficiary_ids
+# MAGIC CREATE OR REPLACE POLICY mask_beneficiary_ids
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'health_plan_beneficiary')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_beneficiary_id;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_beneficiary_id
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'health_plan_beneficiary') AS col ON COLUMN col;
 # MAGIC
 # MAGIC -- Clinical notes: highest risk — regex scrubbing for partial access
-# MAGIC CREATE COLUMN MASK POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.mask_clinical_notes_columns
+# MAGIC CREATE OR REPLACE POLICY mask_clinical_notes_columns
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('hipaa_type', 'medical_record')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.mask_clinical_notes;
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.mask_clinical_notes
+# MAGIC   TO `account users` EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'medical_record') AS col ON COLUMN col;
 
 # COMMAND ----------
 
@@ -631,19 +660,21 @@ displayHTML("""
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Demonstrate EXCEPT clause pattern for pipeline exemption
-# MAGIC -- (Replace 'pipeline-svc@databricks.com' with your actual service principal)
-# MAGIC -- First drop the existing policy:
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.hash_phi_identifiers;
-# MAGIC
-# MAGIC -- Recreate with EXCEPT clause:
-# MAGIC CREATE COLUMN MASK POLICY serverless_stable_swv01_catalog.governance.hash_phi_identifiers
+# MAGIC -- Demonstrate the EXCEPT clause for a pipeline exemption.
+# MAGIC -- CREATE OR REPLACE updates the policy in place (no separate DROP needed).
+# MAGIC -- NOTE: every EXCEPT principal must ALREADY EXIST or creation fails with
+# MAGIC -- PRINCIPAL_DOES_NOT_EXIST. Replace the placeholder with a real service
+# MAGIC -- principal in your account before running this cell (a group like
+# MAGIC -- phi_full_access resolves lazily, but a named user/SP is validated now).
+# MAGIC CREATE OR REPLACE POLICY hash_phi_identifiers
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH COLUMNS WHERE has_tag_value('masking_rule', 'hash')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.hash_identifier
-# MAGIC   EXCEPT `pipeline-svc@databricks.com`;
-# MAGIC -- pipeline-svc sees real member IDs for ETL
-# MAGIC -- All other users (analysts, data scientists) see HID-... hashed IDs
+# MAGIC   COLUMN MASK serverless_stable_swv01_catalog.governance.hash_identifier
+# MAGIC   TO `account users`
+# MAGIC   EXCEPT phi_full_access, `pipeline-svc@databricks.com`   -- ← replace with a real SP
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('masking_rule', 'hash') AS col
+# MAGIC   ON COLUMN col;
+# MAGIC -- pipeline-svc + phi_full_access see real member IDs; everyone else sees HID-...
 
 # COMMAND ----------
 
@@ -689,12 +720,18 @@ displayHTML("""
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- TABLE-SCOPED ROW FILTER POLICY
-# MAGIC CREATE ROW FILTER POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.bh_sud_auth_protection
-# MAGIC   ON TABLE serverless_stable_swv01_catalog.governance.prior_authorizations
-# MAGIC   USING serverless_stable_swv01_catalog.governance.filter_bh_sud_auths
-# MAGIC   EXCEPT phi_full_access;
-# MAGIC -- The policy engine maps the function param auth_type_val → table column auth_type
+# MAGIC -- SCHEMA-SCOPED ROW FILTER POLICY (GA syntax)
+# MAGIC -- MATCH COLUMNS locates the column tagged hipaa_type='auth_type'; USING COLUMNS
+# MAGIC -- (alias) wires that column's value into the filter function argument.
+# MAGIC -- (Requires 03_create_tags.sql, which tags prior_authorizations.auth_type.)
+# MAGIC CREATE OR REPLACE POLICY bh_sud_auth_protection
+# MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
+# MAGIC   ROW FILTER serverless_stable_swv01_catalog.governance.filter_bh_sud_auths
+# MAGIC   TO `account users`
+# MAGIC   EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   MATCH COLUMNS has_tag_value('hipaa_type', 'auth_type') AS auth_type_col
+# MAGIC   USING COLUMNS (auth_type_col);
 
 # COMMAND ----------
 
@@ -709,20 +746,20 @@ displayHTML("""
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔵 7B (60-Min): Schema-Scoped Row Filter — MATCH TABLES WHERE
+# MAGIC ## 🔵 7B (60-Min): Schema-Scoped Row Filter — WHEN + MATCH COLUMNS
 # MAGIC
 # MAGIC **Talk track:**
 # MAGIC > "Just like column mask policies can be schema-scoped, row filter policies
-# MAGIC > can be too — using MATCH TABLES WHERE on a table-level tag. Any table in
-# MAGIC > this schema tagged business_domain='eligibility' automatically gets this
-# MAGIC > filter. A new Medicaid-only eligibility table added next month is protected
+# MAGIC > can be too — the WHEN clause scopes the policy to tables with a table-level
+# MAGIC > tag. Any table in this schema tagged business_domain='eligibility'
+# MAGIC > automatically gets this filter. A new Medicaid-only eligibility table added next month is protected
 # MAGIC > from day one without touching a single policy."
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Schema-scoped ABAC row filter: auto-applies to all tables tagged business_domain='eligibility'
-# MAGIC -- Function takes explicit param; the policy engine maps it to line_of_business column
+# MAGIC -- Schema-scoped ABAC row filter, scoped by WHEN to tables tagged business_domain='eligibility'.
+# MAGIC -- MATCH COLUMNS locates the business_domain='lob' column; USING COLUMNS wires its value in.
 # MAGIC CREATE OR REPLACE FUNCTION serverless_stable_swv01_catalog.governance.filter_eligibility_by_lob(lob_val STRING)
 # MAGIC RETURNS BOOLEAN
 # MAGIC COMMENT 'LOB-scoped eligibility filter. phi_full_access sees all LOBs. Others see Commercial and Medicare Advantage only.'
@@ -733,11 +770,15 @@ displayHTML("""
 # MAGIC     ELSE FALSE
 # MAGIC   END;
 # MAGIC
-# MAGIC CREATE ROW FILTER POLICY IF NOT EXISTS serverless_stable_swv01_catalog.governance.eligibility_lob_filter
+# MAGIC CREATE OR REPLACE POLICY eligibility_lob_filter
 # MAGIC   ON SCHEMA serverless_stable_swv01_catalog.governance
-# MAGIC   MATCH TABLES WHERE has_tag_value('business_domain', 'eligibility')
-# MAGIC   USING serverless_stable_swv01_catalog.governance.filter_eligibility_by_lob
-# MAGIC   EXCEPT phi_full_access;
+# MAGIC   ROW FILTER serverless_stable_swv01_catalog.governance.filter_eligibility_by_lob
+# MAGIC   TO `account users`
+# MAGIC   EXCEPT phi_full_access
+# MAGIC   FOR TABLES
+# MAGIC   WHEN has_tag_value('business_domain', 'eligibility')
+# MAGIC   MATCH COLUMNS has_tag_value('business_domain', 'lob') AS lob_col
+# MAGIC   USING COLUMNS (lob_col);
 
 # COMMAND ----------
 
@@ -831,6 +872,7 @@ displayHTML("""
 <div style="text-align:center; padding:10px; background:#fff8e1; border-radius:8px; border:2px solid #f9a825;">
   <h3 style="color:#e65100; font-family:sans-serif;">⚠️ ABAC Key Limitations</h3>
   <img src="/files/Volumes/serverless_stable_swv01_catalog/governance/demo_assets/slide2.png"
+       onerror="this.outerHTML='&lt;p style=&quot;font-family:sans-serif;color:#777&quot;&gt;[limitations slide unavailable — open governance/demo_assets/slide2.png]&lt;/p&gt;'"
        style="max-width:90%; border-radius:6px;" />
   <p style="font-family:sans-serif; color:#555; font-size:0.9em;">
     Source: Databricks ABAC Visual Summary — Bottom-right: Conflict Resolution + View Behavior
@@ -856,7 +898,7 @@ displayHTML("""
 # MAGIC | **Time travel (`@v1`)** | Fails on tables with active row filters / column masks — unless principal is in EXCEPT | Add pipeline/admin principals to EXCEPT clause when time travel is needed |
 # MAGIC | **Delta Sharing** | Share owners must be in EXCEPT clause to share protected tables | Explicitly exempt share service principals |
 # MAGIC | **Vector Search** | ABAC policies on source tables do NOT automatically apply to vector search indexes | Manage vector search access separately |
-# MAGIC | **Max 3 conditions** | `MATCH COLUMNS WHERE` clause supports max 3 tag conditions | Break complex conditions into separate policies |
+# MAGIC | **Max 3 conditions** | A `MATCH COLUMNS` tag condition supports max 3 tag predicates | Break complex conditions into separate policies |
 # MAGIC | **Tag case sensitivity** | `'full_mask'` ≠ `'Full_Mask'` — case sensitive matching | Use governed tags with lowercase enforced allowed values |
 # MAGIC | **Policy limits** | 10,000/metastore; 100/catalog or schema; 50/table | Monitor with REST API; consolidate policies proactively |
 # MAGIC | **No information_schema for policies** | `information_schema` has no ABAC policy table — use REST API or `SHOW EFFECTIVE POLICIES` | Automate `SHOW EFFECTIVE POLICIES` runs in compliance reporting |
@@ -889,7 +931,7 @@ displayHTML("""
 # MAGIC | **Standardize tag naming** | Typos silently break policies; `'Critical'` ≠ `'critical'` | All tags are lowercase snake_case; governed tags enforce allowed values |
 # MAGIC | **Control who sets tags** | Tagging is a security boundary — unauthorized tag changes can expose data | Only data stewards have TAG privilege on governed tags |
 # MAGIC | **Fallback for unclassified data** | New tables without tags have no protection | Schema-level `compliance=hipaa` tag ensures all tables are visible in audit queries |
-# MAGIC | **Define at highest scope** | Schema-level policies auto-cover new tables | All 10 column mask policies are schema-scoped, not table-scoped |
+# MAGIC | **Define at highest scope** | Schema-level policies auto-cover new tables | All 8 column mask policies are schema-scoped, not table-scoped |
 # MAGIC | **Avoid policy sprawl** | Too many narrow policies are hard to audit and maintain | One policy per HIPAA identifier type; not one per column |
 # MAGIC | **Prefer EXCEPT for principal targeting** | Cleaner than `is_account_group_member()` inside UDF for pipeline exemptions | EXCEPT used for pipeline service principals |
 # MAGIC | **Plan for query-time evaluation** | ABAC evaluates at every query — UDFs add latency if complex | UDFs use simple CASE/WHEN with built-in functions, no external calls |
@@ -956,17 +998,19 @@ time_query("Full query (all columns)",
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Drop ABAC policies (run after demo if workspace will be reused)
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.hash_phi_identifiers;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_phi_dates;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_ssn_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_name_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_phone_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_email_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_beneficiary_ids;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_clinical_notes_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_address_columns;
-# MAGIC DROP COLUMN MASK POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_zip_columns;
-# MAGIC DROP ROW FILTER POLICY IF EXISTS serverless_stable_swv01_catalog.governance.bh_sud_auth_protection;
-# MAGIC DROP ROW FILTER POLICY IF EXISTS serverless_stable_swv01_catalog.governance.eligibility_lob_filter;
+# MAGIC -- Drop ABAC policies (run after demo if workspace will be reused).
+# MAGIC -- NOTE: ABAC DROP POLICY has NO IF EXISTS; form is
+# MAGIC --   DROP POLICY <name> ON SCHEMA <catalog>.<schema>;   (verified live 2026-10-07)
+# MAGIC -- These are the 10 policies THIS notebook creates. (address/zip masks live
+# MAGIC -- only in 07_abac_policies.sql, so they are not dropped here.)
+# MAGIC DROP POLICY hash_phi_identifiers        ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_phi_dates              ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_ssn_columns            ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_name_columns           ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_phone_columns          ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_email_columns          ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_beneficiary_ids        ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY mask_clinical_notes_columns ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY bh_sud_auth_protection      ON SCHEMA serverless_stable_swv01_catalog.governance;
+# MAGIC DROP POLICY eligibility_lob_filter      ON SCHEMA serverless_stable_swv01_catalog.governance;
 # MAGIC DROP TABLE IF EXISTS serverless_stable_swv01_catalog.governance.appeals;
