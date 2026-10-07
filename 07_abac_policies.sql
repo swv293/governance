@@ -68,7 +68,7 @@ ON COLUMN col;
 -- POLICY 2: mask_phi_dates
 -- Matches: hipaa_type = 'date_element'
 -- Covers:  date_of_birth + service/admit/discharge dates (7 cols, 4 tables)
--- UDF:     mask_date_of_birth — full date / year-month / year-only
+-- UDF:     mask_date_of_birth — full date / first-of-month / first-of-year (RETURNS DATE)
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE POLICY mask_phi_dates
 ON SCHEMA serverless_stable_swv01_catalog.governance
@@ -356,17 +356,19 @@ SHOW EFFECTIVE POLICIES ON TABLE serverless_stable_swv01_catalog.governance.memb
 
 -- ============================================================================
 -- CLEANUP (uncomment to tear down after demo)
+-- NOTE: ABAC DROP POLICY does NOT support IF EXISTS; form is
+--   DROP POLICY <name> ON SCHEMA <catalog>.<schema>; (verified live 2026-10-07)
 -- ============================================================================
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.hash_phi_identifiers;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_phi_dates;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_ssn_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_name_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_phone_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_email_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_beneficiary_ids;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_clinical_notes_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_address_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.mask_zip_columns;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.bh_sud_auth_protection;
--- DROP POLICY IF EXISTS serverless_stable_swv01_catalog.governance.eligibility_lob_filter;
+-- DROP POLICY hash_phi_identifiers        ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_phi_dates              ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_ssn_columns            ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_name_columns           ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_phone_columns          ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_email_columns          ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_beneficiary_ids        ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_clinical_notes_columns ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_address_columns        ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY mask_zip_columns            ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY bh_sud_auth_protection      ON SCHEMA serverless_stable_swv01_catalog.governance;
+-- DROP POLICY eligibility_lob_filter      ON SCHEMA serverless_stable_swv01_catalog.governance;
 -- DROP TABLE IF EXISTS serverless_stable_swv01_catalog.governance.appeals;
