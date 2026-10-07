@@ -121,14 +121,19 @@ RETURN
 -- NOTE: HIPAA Safe Harbor requires aggregating ages 90+ to a single category.
 --       Add a CASE WHEN for production use.
 -- ============================================================================
+-- RETURNS DATE (not STRING): a Unity Catalog column mask's return type must
+-- match the masked column's type, and every date_element column is DATE. A
+-- STRING-returning mask creates fine but fails at QUERY time with
+-- CAST_INVALID_INPUT ('1958-XX-XX' cannot cast to DATE). Generalize by
+-- truncating instead, which keeps the DATE type (verified live 2026-10-07).
 CREATE OR REPLACE FUNCTION serverless_stable_swv01_catalog.governance.mask_date_of_birth(dob DATE)
-RETURNS STRING
-COMMENT 'Generalizes dates of birth to progressively less granular levels. phi_full_access: Returns full date (e.g., 1958-03-14) for HEDIS measures, eligibility verification, care gap identification. phi_partial_access: Returns year-month (e.g., 1958-03) for age-band analytics and risk adjustment. All others: Returns year only (e.g., 1958-XX-XX) for cohort analysis and actuarial modeling. Note: HIPAA Safe Harbor requires aggregating ages 90+ -- add a CASE WHEN for production. Tags: sensitivity_level=critical, hipaa_type=DATE, masking_rule=PARTIAL_MASK. Columns: members.date_of_birth, claims.service_date_from/to, admission/discharge_date, pharmacy_claims.fill_date. HIPAA 45 CFR 164.514(b)(2)(i)(C).'
+RETURNS DATE
+COMMENT 'Generalizes dates to progressively less granular levels, returning DATE to match the masked column type. phi_full_access: full date (e.g., 1958-03-14). phi_partial_access: first of month (e.g., 1958-03-01) for age-band analytics and risk adjustment. All others: first of year (e.g., 1958-01-01) for cohort analysis and actuarial modeling. Note: HIPAA Safe Harbor requires aggregating ages 90+ -- add a CASE WHEN for production. Tags: sensitivity_level=critical, hipaa_type=DATE, masking_rule=PARTIAL_MASK. Columns: members.date_of_birth, claims.service_date_from/to, admission/discharge_date, pharmacy_claims.fill_date. HIPAA 45 CFR 164.514(b)(2)(i)(C).'
 RETURN
   CASE
-    WHEN is_account_group_member('phi_full_access') THEN CAST(dob AS STRING)
-    WHEN is_account_group_member('phi_partial_access') THEN DATE_FORMAT(dob, 'yyyy-MM')
-    ELSE CONCAT(CAST(YEAR(dob) AS STRING), '-XX-XX')
+    WHEN is_account_group_member('phi_full_access') THEN dob
+    WHEN is_account_group_member('phi_partial_access') THEN CAST(DATE_TRUNC('MONTH', dob) AS DATE)
+    ELSE CAST(DATE_TRUNC('YEAR', dob) AS DATE)
   END;
 
 
