@@ -250,6 +250,14 @@ RETURN
 -- MATCH COLUMNS finds the column whose value is passed into the filter function.
 -- USING COLUMNS (alias) wires the matched column value into the function arg.
 -- WHEN scopes the policy to tables matching a table-level tag condition.
+--
+-- PREREQUISITE (verified live 2026-10-07): these match on governed-tag VALUES
+-- hipaa_type='auth_type' and business_domain='lob'/'eligibility'. They must be in
+-- the governed tags' allowed-value lists. On an EXISTING metastore CREATE TAG IF
+-- NOT EXISTS (05) will NOT add them, and business_domain may already belong to
+-- another project — fix with an account-admin tag-policy update (or dedicated
+-- demo tags) first, or these policies / their tag writes fail
+-- UC_TAG_POLICY_VALUE_NOT_ALLOWED. The column-mask policies above have no such dependency.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------

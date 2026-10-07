@@ -29,6 +29,25 @@ Every script hard-codes `serverless_stable_swv01_catalog`. To run elsewhere,
 find-and-replace that catalog name across all `.sql` files and the notebook
 (the schema `governance` can stay).
 
+## Row-filter policies — governed-tag prerequisite ⚠️
+The two **row-filter** policies in `07` match on governed-tag *values* that must
+already be allowed on the metastore:
+- `bh_sud_auth_protection` → `hipaa_type = 'auth_type'`
+- `eligibility_lob_filter` → `business_domain = 'lob'` (and table tag `'eligibility'`)
+
+On a **fresh** metastore `05_governed_tags.sql` creates these with the right
+allowed values and everything works. On an **existing** metastore `CREATE TAG IF
+NOT EXISTS` will NOT add the values to a tag that already exists (see the footgun
+note in `05`), and a generic tag like `business_domain` may already be owned by
+another project with a different value list — matching then fails with
+`UC_TAG_POLICY_VALUE_NOT_ALLOWED`. Add the values via an account-admin tag-policy
+update (or point the row filters at demo-dedicated governed tags) before running
+Act 7. The **column-mask** policies have no such dependency.
+
+**Deployment status (FEVM `serverless_stable_swv01_catalog.governance`, verified 2026-10-07):**
+all 10 column-mask policies are deployed and verified; the 2 row-filter policies
+are **not** deployed pending the governed-tag values above.
+
 ## Access tiers
 | Tier | Group | Sees |
 |------|-------|------|
