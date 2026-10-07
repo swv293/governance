@@ -16,6 +16,13 @@
 --   Option C — Terraform (databricks_tag_policy resource)
 -- ============================================================================
 
+-- ⚠️ FOOTGUN (verified live 2026-10-07): CREATE TAG IF NOT EXISTS does NOT
+--    update a tag that already exists. If a governed tag (e.g. hipaa_type) was
+--    created by a PRIOR run with a different allowed-value list, re-running this
+--    file will NOT add new values (e.g. 'auth_type'), and policies that match
+--    the missing value fail with UC_TAG_POLICY_VALUE_NOT_ALLOWED. To add a value
+--    to an existing governed tag, ALTER it (or drop + recreate) — not IF NOT EXISTS.
+
 USE CATALOG serverless_stable_swv01_catalog;
 
 -- --------------------------------------------------------------------------
